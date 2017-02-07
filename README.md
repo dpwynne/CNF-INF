@@ -3,7 +3,7 @@ Shiny app to work with cumulative proportion/probability problems using the norm
 Designed as a teaching aid for CSU Fullerton Math 338 and similar upper-division statistics classes.
 
 ## Known Bugs
-Sometimes the cumulative proportion (left tab) outputs will refresh twice. It shouldn't be a problem, though.
+Sometimes the cumulative proportion (left tab) outputs will refresh twice.
 
 ## Left Tab (Values to Proportions)
 Specify a range of values on the original scale, and whether you want to compute the proportion above X (upper tail), below Y (lower tail), or between X and Y (middle).
