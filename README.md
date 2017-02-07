@@ -2,6 +2,9 @@
 Shiny app to work with cumulative proportion/probability problems using the normal distribution. Supports values out to 4 standard deviations away from the mean.
 Designed as a teaching aid for CSU Fullerton Math 338 and similar upper-division statistics classes.
 
+## Known Bugs
+There is an occasional issue with the custom slider in the left tab oscillating between two values.
+
 ## Left Tab (Values to Proportions)
 Specify a range of values on the original scale, and whether you want to compute the proportion above X (upper tail), below Y (lower tail), or between X and Y (middle).
 The output shows the four steps of performing this type of problem:
