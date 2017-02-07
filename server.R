@@ -6,54 +6,99 @@ library(ggplot2)
 
 shinyServer(function(input, output) {
 
-  ## need the custom slider for the CNF version
-    output$slider_cnf_bounds <- renderUI({
-      min_range <- input$cnf_mean - 4*input$cnf_sd
-      max_range <- input$cnf_mean + 4*input$cnf_sd
-      if (is.null(input$slider_cnf_range)){
-        if (input$cnf_type == 2) bounds <- c(min_range, input$cnf_mean)
-        if (input$cnf_type == 1) bounds <- c(input$cnf_mean, max_range)
-        if (input$cnf_type == 3) bounds <- c(min_range, max_range)
-      }else{
-        if (input$cnf_type == 2) bounds <- c(min_range, input$slider_cnf_range[2])
-        if (input$cnf_type == 1) bounds <- c(input$slider_cnf_range[1], max_range)
-        if (input$cnf_type == 3) bounds <- input$slider_cnf_range
-      }
-
-      sliderInput("slider_cnf_range", label = "Range of Values", min = min_range, max = max_range, value = bounds, step = 0.1*input$cnf_sd)
-  })
-
-  ## Step 1: Normal Distribution Plot
-  output$cnf_plot <- renderPlot({
-    x <- seq(input$cnf_mean - 4.01*input$cnf_sd, input$cnf_mean + 4.01*input$cnf_sd, by = input$cnf_sd/100) 
-    y <- dnorm(x, input$cnf_mean, input$cnf_sd)
+  slider_range <- reactiveValues()
+  cnf_vals <- reactiveValues()
+  
+  observeEvent({
+    input$cnf_mean
+    input$cnf_sd
+    input$cnf_type
+  },{
     min_range <- input$cnf_mean - 4*input$cnf_sd
     max_range <- input$cnf_mean + 4*input$cnf_sd
-    newdata <- data.frame(x,y)
-    ## sort out the labels in the graph based on the type of problem
+    slider_range$step_size <- 0.1*input$cnf_sd
+    slider_range$range <- c(min_range, max_range)
+    if (is.null(input$slider_cnf_range)){
+      slider_range$bounds <- slider_range$range
+    }else{
+      if (input$cnf_type == 2){
+        if (input$slider_cnf_range[2] >= max_range) slider_range$bounds <- c(min_range, input$slider_cnf_range[1])
+        if (input$slider_cnf_range[2] < max_range) slider_range$bounds <- c(min_range, input$slider_cnf_range[2])
+      }
+      if (input$cnf_type == 1){
+        if (input$slider_cnf_range[1] <= min_range) slider_range$bounds <- c(input$slider_cnf_range[2], max_range)
+        if (input$slider_cnf_range[1] > min_range) slider_range$bounds <- c(input$slider_cnf_range[1], max_range)
+      }
+      if (input$cnf_type == 3) slider_range$bounds <- c(min(input$slider_cnf_range, max_range), max(input$slider_cnf_range, min_range))
+    }
+  
+    }, priority = 2)
+  
+
+  observeEvent({
+    input$cnf_type
+    input$cnf_sd
+    input$cnf_mean
+    input$slider_cnf_range
+  },{
     if (input$cnf_type == 1){
-      above <- input$slider_cnf_range[1]
-      below <- max_range
-      x.labels <- above
+      cnf_vals$above <- input$slider_cnf_range[1]
+      cnf_vals$below <- slider_range$bounds[2]
+      cnf_vals$x.labels <- cnf_vals$above
     }
     if (input$cnf_type == 2){
-      above <- min_range
-      below <- input$slider_cnf_range[2]
-      x.labels <- below
+      cnf_vals$above <- slider_range$bounds[1]
+      cnf_vals$below <- input$slider_cnf_range[2]
+      cnf_vals$x.labels <- cnf_vals$below
     }
     if (input$cnf_type == 3){    
-      above <- input$slider_cnf_range[1]
-      below <- input$slider_cnf_range[2]
-      x.labels <- c(above, below)
+      cnf_vals$above <- input$slider_cnf_range[1]
+      cnf_vals$below <- input$slider_cnf_range[2]
+      cnf_vals$x.labels <- c(cnf_vals$above, cnf_vals$below)
     }
+
+    cnf_vals$z1 <- (input$slider_cnf_range[1] - input$cnf_mean)/input$cnf_sd
+    cnf_vals$z2 <- (input$slider_cnf_range[2] - input$cnf_mean)/input$cnf_sd
+    cnf_vals$p1 <- pnorm(cnf_vals$z1)
+    cnf_vals$p2 <- pnorm(cnf_vals$z2)
+    cnf_vals$xmin <- input$slider_cnf_range[1]
+    cnf_vals$xmax <- input$slider_cnf_range[2]
+    
+  }, priority = 1)
+  
+  ## need the custom slider for the CNF version
+    output$slider_cnf_bounds <- renderUI({
+      if (is.null(slider_range$range)){
+        sliderInput("slider_cnf_range", label = "Range of Values", min = -4, max = 4, value = c(-4, 4), step = 0.1)  
+      }else{  
+        sliderInput("slider_cnf_range", label = "Range of Values", min = slider_range$range[1], max = slider_range$range[2], value = slider_range$bounds, step = slider_range$step_size)
+      }
+  })
+
+    
+    
+  ## Step 1: Normal Distribution Plot
+  output$cnf_plot <- renderPlot({
+    if (is.null(slider_range$range) | is.null(slider_range$step_size)){
+      x <- seq(-4, 4, by = 0.01)
+    }else{
+      x <- seq(slider_range$range[1], slider_range$range[2], by = slider_range$step_size/10)
+    }
+    y <- dnorm(x, input$cnf_mean, input$cnf_sd)
+    
+    newdata <- data.frame(x,y)
     y.bounds <- -max(y)/40
 
     ## four steps to creating the graph
     n1 <- ggplot(data=newdata, aes(x=x,y=y))+theme_bw()+theme(panel.grid.major=element_blank(),panel.grid.minor=element_blank())
-    n2 <- n1 + geom_area(data=newdata[(x>=above & x<=below),], color="black", linetype="dashed", fill="lightgray")
+    if (is.null(cnf_vals$above)){
+      n2 <- n1 + geom_area(data=newdata, color="black", linetype="dashed", fill="lightgray")
+    }else{
+      n2 <- n1 + geom_area(data=newdata[(x>=cnf_vals$above & x<=cnf_vals$below),], color="black", linetype="dashed", fill="lightgray")
+    }
     n3 <- n2 + geom_area(data=newdata, color="black", fill=NA) + labs(x="Values", y="Density")
-    if (length(x.labels) > 0){
-      n4 <- n3 + annotate("text", x=x.labels, y = y.bounds, label=as.character(x.labels))
+    if (!is.null(cnf_vals$x.labels)){
+      n4 <- n3 + annotate("text", x=cnf_vals$x.labels, y = y.bounds, label=as.character(cnf_vals$x.labels))
     }else{
       n4 <- n3
     }
@@ -63,29 +108,38 @@ shinyServer(function(input, output) {
 
   ## Step 2: z-score - low
   output$cnf_zscore_low <- renderText({
-    z1 <- (input$slider_cnf_range[1] - input$cnf_mean)/input$cnf_sd
 
-    ex1 <- paste0("The z-score corresponding to x = ", input$slider_cnf_range[1], " is ", round(z1, 2))
-
+    if (is.null(cnf_vals$z1)){
+      ex1 <- "The z-score corresponding to x = -4 is -4"
+    }else{
+      ex1 <- paste0("The z-score corresponding to x = ", cnf_vals$xmin, " is ", round(cnf_vals$z1, 2))
+    }
+    
     if (input$cnf_type == 1 | input$cnf_type == 3) return(ex1)
     if (input$cnf_type == 2) return("")
   
   })
   
   output$cnf_zscore_high <- renderText({
-    z2 <- (input$slider_cnf_range[2] - input$cnf_mean)/input$cnf_sd
+
+    if (is.null(cnf_vals$z2)){
+      ex2 <- "The z-score corresponding to x = 4 is 4"
+    }else{
+      ex2 <- paste0("The z-score corresponding to x = ", cnf_vals$xmax, " is ", round(cnf_vals$z2, 2))  
+    }
     
-    ex2 <- paste0("The z-score corresponding to x = ", input$slider_cnf_range[2], " is ", round(z2, 2))
-    
+    if (input$cnf_type == 1) return("")
     if (input$cnf_type == 2 | input$cnf_type == 3) return(ex2)
   })
   
   ## Step 3: cumulative probabilities - low
   output$cnf_cprob_low <- renderText({
-    z1 <- (input$slider_cnf_range[1] - input$cnf_mean)/input$cnf_sd
-    p1 <- pnorm(z1)
     
-    ex1 <- paste("The cumulative proportion corresponding to z =", round(z1, 2), "is", round(p1, 4))
+    if (is.null(cnf_vals$z1)){
+      ex1 <- "The cumulative proportion corresponding to z = -4 is 0"
+    }else{
+      ex1 <- paste("The cumulative proportion corresponding to z =", round(cnf_vals$z1, 2), "is", round(cnf_vals$p1, 4))
+    }
     
     if (input$cnf_type == 1 | input$cnf_type == 3) return(ex1)
     if (input$cnf_type == 2) return("")
@@ -93,11 +147,12 @@ shinyServer(function(input, output) {
     
   ## Step 3: cumulative probabilities - high
   output$cnf_cprob_high <- renderText({
-    z2 <- (input$slider_cnf_range[2] - input$cnf_mean)/input$cnf_sd
-    p2 <- pnorm(z2)
-    
-    ex2 <- paste("The cumulative proportion corresponding to z =", round(z2, 2), "is", round(p2, 4))
-    
+    if (is.null(cnf_vals$z2)){
+      ex2 <- "The cumulative proportion corresponding to z = 4 is 1"
+    }else{
+      ex2 <- paste("The cumulative proportion corresponding to z =", round(cnf_vals$z2, 2), "is", round(cnf_vals$p2, 4))
+    }
+
     if (input$cnf_type == 1) return("")
     if (input$cnf_type == 2 | input$cnf_type == 3) return(ex2)
   
@@ -105,14 +160,14 @@ shinyServer(function(input, output) {
   
   ## Step 4: answer
   output$cnf_answer <- renderText({
-    z1 <- (input$slider_cnf_range[1] - input$cnf_mean)/input$cnf_sd
-    z2 <- (input$slider_cnf_range[2] - input$cnf_mean)/input$cnf_sd
-    p1 <- pnorm(z1)
-    p2 <- pnorm(z2)
-    
-    ex1 <- paste("The proportion of values greater than", input$slider_cnf_range[1], "is", round(1-p1, 4))
-    ex2 <- paste("The proportion of values less than", input$slider_cnf_range[2], "is", round(p2, 4))
-    ex3 <- paste("The proportion of values between", input$slider_cnf_range[1], "and", input$slider_cnf_range[2], "is", round(p2-p1, 4))
+
+  if (!is.null(cnf_vals$p2)){  
+    ex1 <- paste("The proportion of values greater than", cnf_vals$xmin, "is", round(1-cnf_vals$p1, 4))
+    ex2 <- paste("The proportion of values less than", cnf_vals$xmax, "is", round(cnf_vals$p2, 4))
+    ex3 <- paste("The proportion of values between", cnf_vals$xmin, "and", cnf_vals$xmax, "is", round(cnf_vals$p2-cnf_vals$p1, 4))
+  }else{
+    ex1 <- ex2 <- ex3 <- ""
+  }
     
     if (input$cnf_type == 1) return(ex1)
     if (input$cnf_type == 2) return(ex2)
